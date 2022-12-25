@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: cr-simulation
+Version: 1.0
+Summary: Package for numerical simulation of CR and single qubit gates
+Home-page: https://github.com/gautham-umasankar/cr_simulation
+Author: Gautham Umasankar
+Author-email: gautham.umasankar@yale.edu
