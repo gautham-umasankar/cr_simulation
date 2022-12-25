@@ -1,8 +1,0 @@
-setup.py
-cr_simulation/__init__.py
-cr_simulation/funs.py
-cr_simulation.egg-info/PKG-INFO
-cr_simulation.egg-info/SOURCES.txt
-cr_simulation.egg-info/dependency_links.txt
-cr_simulation.egg-info/not-zip-safe
-cr_simulation.egg-info/top_level.txt
