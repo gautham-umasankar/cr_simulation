@@ -7,7 +7,7 @@ This package is based of my Master's Thesis work at QuMaC lab, TIFR. It has tool
 3. Numerically calibrate single qubit gates and CR gates between arbitrary pairs of qubits
 4. Estimate the Fidelity and Error Budget of the single qubit and CR gates - Errors due to imperfect rotation, leakage, spectator rotation etc (Note that decoherence is not taken into account)
 
-All these capabilities are illustrated in the Example_CR_Simulation.ipynb notebook. For further theoretical details, refer the Master's Thesis pdf file.
+All these capabilities are illustrated in the Example_CR_Simulation.ipynb notebook. For further information about the methods in the package, please check out CR.py in the directory cr_simulation. Each method's docs has all the details about its functionality. For further theoretical details, refer the Master's Thesis pdf file.
 
 Instructions to use:
 
