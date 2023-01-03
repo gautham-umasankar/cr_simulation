@@ -13,5 +13,5 @@ Instructions to use:
 
 1. Clone this whole repository.
 2. Create a new conda environment (Not necessary, but recommended, some package versions might be changed)
-3. In the directory containing this repository, run ''' pip install -e cr_simulation '''
+3. In the directory containing this repository, run ``` pip install -e cr_simulation ```
 4. Use the example notebook to understand use all features
