@@ -5,5 +5,3 @@ Created on Sun Dec 25 17:34:48 2022
 
 @author: gautham
 """
-
-from .funs import test

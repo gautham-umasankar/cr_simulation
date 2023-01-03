@@ -15,4 +15,5 @@ setup(name='cr_simulation',
       author='Gautham Umasankar',
       author_email='gautham.umasankar@yale.edu',
       packages=['cr_simulation'],
+      install_requires = ['qutip==4.7.1', 'tqdm>=4.64.1', 'notebook', 'matplotlib', 'joblib', 'sympy', 'tabulate'],
       zip_safe=False)
