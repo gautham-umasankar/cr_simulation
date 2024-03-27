@@ -37,27 +37,27 @@ def check_resonance(pr,tol,dressed = False):
             if i == j:
                 continue
             if pr.J[i][j]!=0 and np.abs(pr.qubits[i][wkey]-pr.qubits[j][wkey])<tol:
-                print("Coupled qubits {}, {} are too close in frequency".format(i+1,j+1))
+                print("Coupled qubits {}, {} are too close in frequency".format(i,j))
             if pr.control_target[i][j]!=0 and np.abs((pr.qubits[i][wkey]-pr.qubits[j][wkey]) - pr.qubits[i]['a']/2)<tol:
-                print("Control {}, Target {} are too close to pole -anh_c/2".format(i+1,j+1))
+                print("Control {}, Target {} are too close to pole -anh_c/2".format(i,j))
             if pr.J[i][j]!=0 and np.abs((pr.qubits[i][wkey]-pr.qubits[j][wkey]) - pr.qubits[i]['a'])<tol:
-                print("Coupled qubits {}, {} are too close to pole -anh_{}".format(i+1,j+1,i+1))
+                print("Coupled qubits {}, {} are too close to pole -anh_{}".format(i,j,i))
             if pr.control_target[i][j]!=0 and (pr.qubits[i][wkey]-pr.qubits[j][wkey] - pr.qubits[i]['a'])>tol:
-                print("Control {}, Target {} are beyond pole -anh_{}. Gates will be slow".format(i+1,j+1,i+1))
+                print("Control {}, Target {} are beyond pole -anh_{}. Gates will be slow".format(i,j,i))
             if pr.control_target[i][j]!=0 and np.abs(pr.qubits[i][wkey]-pr.qubits[j][wkey] + pr.qubits[j]['a'])<tol:
-                print("Control {}, Target {} are too close to pole anh_t".format(i+1,j+1))
+                print("Control {}, Target {} are too close to pole anh_t".format(i,j))
             for k in range(pr.N):
                 if i==k or j==k:
                     continue
                 if pr.control_target[j][i]!=0 and pr.control_target[j][k]!=0:
 #                     print("inside. j = {}, i = {}, k = {}".format(j,i,k))
                     if np.abs(pr.qubits[i][wkey]-pr.qubits[k][wkey])<tol:
-                        print("Targets {},{} sharing control {} are too close in frequency".format(i+1,k+1,j+1))
+                        print("Targets {},{} sharing control {} are too close in frequency".format(i,k,j))
                     if np.abs(pr.qubits[i][wkey]- pr.qubits[k][wkey] + pr.qubits[k]['a'])<tol or np.abs(pr.qubits[i][wkey]- pr.qubits[k][wkey] + pr.qubits[i]['a'])<tol:
-                        print("Targets {},{} sharing control {} are too close to poles del_{},{} = anh_{} or del_{},{} = -anh_{}".format(i+1,k+1,j+1,i+1,k+1,k+1,i+1,k+1,i+1))
+                        print("Targets {},{} sharing control {} are too close to poles del_{},{} = anh_{} or del_{},{} = -anh_{}".format(i,k,j,i,k,k,i,k,i))
                 if pr.J[i][j]!=0 and pr.control_target[j][k]!=0:
                     if np.abs(pr.qubits[i][wkey] + pr.qubits[k][wkey] - 2*pr.qubits[j][wkey] + pr.qubits[j]['a'])<tol:
-                        print("Qubit {}, connected with control {} and target {} is close to del_{},{} + del_{},{} = anh_{}".format(i+1,j+1,k+1,i+1,j+1,k+1,j+1,j+1))
+                        print("Qubit {}, connected with control {} and target {} is close to del_{},{} + del_{},{} = anh_{}".format(i,j,k,i,j,k,j,j))
 
 
 
@@ -1557,7 +1557,7 @@ class processor:
             F_list.append(F)
         return F_list,E_list
     
-    def get_new_error_budget(self,M, use_optimizer = True, use_zero_initial_values = False):
+    def get_new_error_budget(self,M, use_optimizer = True, use_zero_initial_values = False, no_CP = True):
         '''
             Function to get error budget of a given propagator in the computational subspace, as per new definitions
             For the CR Gate
@@ -1571,13 +1571,18 @@ class processor:
                 use_zero_initial_values: Bool
                     If True, zero initial values are given to the optimizer
                     If False, analytical initial values are given to the optimizer
-        
+                no_CP: Bool
+                    If True, it doesn't calculate conditional phase error, and lumps this together with target rotation error
+                    If False, it calculates it and returns it
+                    Default: True
+                
             Returns
             -------
                 E: float
                     CR gate error
                 E_CP: float
                     Conditional phase errors
+                    Not returned if no_CP is True
                 E_T: float
                     Target rotation errors
                 E_C: float
@@ -1609,9 +1614,12 @@ class processor:
         
         E_U_CR_CP = 1 - self.get_f_qt(M,U_CR_CP)
         E_CP = E_U_CR - E_U_CR_CP
-        
         E_U_TU = 1 - self.get_f_qt(M,U_TU)
-        E_T = E_U_CR_CP - E_U_TU
+            
+        if no_CP:
+            E_T = E_U_CR - E_U_TU
+        else:
+            E_T = E_U_CR_CP - E_U_TU
         
         E_U_CTU = 1 - self.get_f_qt(M,U_CTU)
         E_C = E_U_TU - E_U_CTU
@@ -1621,10 +1629,13 @@ class processor:
             E_specs.append(self.get_f_qt(M,self.get_U_CR_N(M,i+1)) - self.get_f_qt(M,self.get_U_CR_N(M,i)))
         
         E_leak = 1 - self.get_f_qt(M,self.get_U_CR_N(M,self.N))
-        
-        return E, E_CP, E_T, E_C, E_specs, E_leak
+
+        if no_CP:
+            return E, E_T, E_C, E_specs, E_leak
+        else:
+            return E, E_CP, E_T, E_C, E_specs, E_leak
     
-    def E_vs_F_new_error_budget(self,ctrl,tgt,drive_frequency, calib_path, pulse_shape,args = None,E_key = 'Emax',t_key = 'tp',t_step_key = 't_step', use_optimizer = True, use_zero_initial_values = False, E_max = None, E_min = None, no_progress_bar = False):
+    def E_vs_F_new_error_budget(self,ctrl,tgt,drive_frequency, calib_path, pulse_shape,args = None,E_key = 'Emax',t_key = 'tp',t_step_key = 't_step', use_optimizer = True, use_zero_initial_values = False, E_max = None, E_min = None, no_progress_bar = False, no_CP = True):
         '''
             Method to find Fidelity and Error Budget vs Drive Strength, for a pre-calibrated list (E vs t) of drive-strengths
             This uses the new definitions
@@ -1665,6 +1676,10 @@ class processor:
                 no_progress_bar: Bool
                     If true, a progress bar is activated
                     Default: False
+                no_CP: Bool
+                    If True, it doesn't calculate conditional phase error, and lumps this together with target rotation error
+                    If False, it calculates it and returns it
+                    Default: True
 
             Returns:
                 Elements of each list correspond to different drive strengths
@@ -1672,6 +1687,7 @@ class processor:
                     List of CR gate errors
                 E_CP: list
                     List of conditional phase errors
+                    Not returned if no_CP if True
                 E_T: list
                     List of target rotation errors
                 E_C: list
@@ -1714,16 +1730,24 @@ class processor:
                     continue
             
             M = self.get_M(ctrl,tgt,drive_frequency,pulse_shape,t,args)
+
+            if no_CP:
+                E, E_T, E_C, E_specs, E_leak = self.get_new_error_budget(M, use_optimizer = use_optimizer, use_zero_initial_values=use_zero_initial_values, no_CP = no_CP)
+            else:
+                E, E_CP, E_T, E_C, E_specs, E_leak = self.get_new_error_budget(M, use_optimizer = use_optimizer, use_zero_initial_values=use_zero_initial_values, no_CP = no_CP)
+                E_CP_list.append(E_CP)
+
                 
-            E, E_CP, E_T, E_C, E_specs, E_leak = self.get_new_error_budget(M, use_optimizer = use_optimizer, use_zero_initial_values=use_zero_initial_values)
             E_list.append(E)
-            E_CP_list.append(E_CP)
             E_T_list.append(E_T)
             E_C_list.append(E_C)
             E_specs_list.append(E_specs)
             E_leak_list.append(E_leak)
-            
-        return E_list, E_CP_list, E_T_list, E_C_list, E_specs_list, E_leak_list
+
+        if no_CP:
+            return E_list, E_T_list, E_C_list, E_specs_list, E_leak_list
+        else:
+            return E_list, E_CP_list, E_T_list, E_C_list, E_specs_list, E_leak_list
 
     '''########################## Old Error Budget #############################################'''
         
@@ -2375,7 +2399,7 @@ class processor:
             ts.append(trx[0])
         return ts,phi
         
-    def get_new_error_budget_RX(self,M, use_optimizer = True, use_zero_initial_values = False):
+    def get_new_error_budget_RX(self,M, use_optimizer = True, use_zero_initial_values = False, no_CP = True):
         '''
             Function to get error budget of a given propagator in the computational subspace, as per new definitions
             For the RX Gate
@@ -2389,13 +2413,17 @@ class processor:
                 use_zero_initial_values: Bool
                     If True, zero initial values are given to the optimizer
                     If False, analytical initial values are given to the optimizer
+                no_CP: Bool
+                    If True, it doesn't calculate conditional phase error, and lumps this together with target rotation error
+                    If False, it calculates it and returns it
+                    Default: True
         
             Returns
             -------
                 E: float
                     RX gate error
                 E_CP: float
-                    Conditional phase errors
+                    Conditional phase errors (returned only if no_CP = False)
                 E_T: float
                     Target rotation errors
                 E_specs: list of float
@@ -2418,12 +2446,15 @@ class processor:
         # Find all fidelity metrics
         E_U_RX = 1 - self.get_f_qt(M,U_RX)
         E = E_U_RX
-        
+
         E_U_RX_CP = 1 - self.get_f_qt(M,U_RX_CP)
         E_CP = E_U_RX - E_U_RX_CP
-        
+                
         E_U_TU = 1 - self.get_f_qt(M,U_TU)
-        E_T = E_U_RX_CP - E_U_TU
+        if no_CP:
+            E_T = E_U_RX - E_U_TU
+        else:
+            E_T = E_U_RX_CP - E_U_TU
         
         
         E_specs = []
@@ -2432,10 +2463,13 @@ class processor:
         
         E_leak = 1 - self.get_f_qt(M,self.get_U_CR_N(M,self.N))
 
-        return E, E_CP, E_T, E_specs, E_leak
+        if no_CP:
+            return E, E_T, E_specs, E_leak
+        else:
+            return E, E_CP, E_T, E_specs, E_leak
         
     
-    def E_vs_F_new_error_budget_RX(self,tgt,drive_frequency,calib_path, pulse_shape,args = None,E_key = 'Emax',t_key = 'tp',t_step_key = 't_step', use_optimizer = True, use_zero_initial_values = False):
+    def E_vs_F_new_error_budget_RX(self,tgt,drive_frequency,calib_path, pulse_shape,args = None,E_key = 'Emax',t_key = 'tp',t_step_key = 't_step', use_optimizer = True, use_zero_initial_values = False, no_CP = True):
          '''
              Method to find Fidelity and Error Budget vs Drive Strength, for a pre-calibrated list (E vs t) of drive-strengths
              This uses the new definitions
@@ -2468,6 +2502,10 @@ class processor:
                      If True, the optimizer is given zero initial conditions
                      If False, the optimizer is given analytical initial conditions
                      Default: True
+                no_CP: Bool
+                    If True, it doesn't calculate conditional phase error, and lumps this together with target rotation error
+                    If False, it calculates it and returns it
+                    Default: True
                     
              Returns
              -------
@@ -2509,14 +2547,21 @@ class processor:
              args[E_key] = 1e-3*drive_list[ind]*2*np.pi
              t = np.arange(0,args[t_key],0.5)            
              M = self.get_M(tgt,tgt,drive_frequency,pulse_shape,t,args)
-             E, E_CP, E_T, E_specs, E_leak = self.get_new_error_budget_RX(M,use_optimizer = use_optimizer, use_zero_initial_values = use_zero_initial_values)
+             if no_CP:
+                 E, E_T, E_specs, E_leak = self.get_new_error_budget_RX(M,use_optimizer = use_optimizer, use_zero_initial_values = use_zero_initial_values, no_CP = no_CP)
+             else:
+                 E, E_CP, E_T, E_specs, E_leak = self.get_new_error_budget_RX(M,use_optimizer = use_optimizer, use_zero_initial_values = use_zero_initial_values, no_CP = no_CP)
+                 E_CP_list.append(E_CP)
+             
              E_list.append(E)
-             E_CP_list.append(E_CP)
              E_T_list.append(E_T)
              E_specs_list.append(E_specs)
              E_leak_list.append(E_leak)
-            
-         return E_list, E_CP_list, E_T_list, E_specs_list, E_leak_list
+
+         if no_CP:
+             return E_list, E_T_list, E_specs_list, E_leak_list
+         else:
+             return E_list, E_CP_list, E_T_list, E_specs_list, E_leak_list
      
      
 #============= Effective Hamiltonian Code (Sumeru) ================================
