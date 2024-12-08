@@ -398,7 +398,7 @@ class processor:
                 if len(state_map_scipy)!=self.N_l**self.N:
                     raise ValueError('State assignment failed even with reduced coupling strength')
                 # Restore the original coupling strength
-                self.J = self.J*2
+                self.J = self.J*self.coupling_reduction_factor**(-1)
                 self.create_H_pr(self.w_frame)
             
         # Create the Unitary matrix to transform to dressed basis
