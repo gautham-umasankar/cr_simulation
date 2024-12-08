@@ -227,6 +227,9 @@ class processor:
         self.save_M = False # For saving propagator for large systems
         self.full_rank_choice = 0 # For choosing which subset is to be used for  phase estimation
         self.propagator_path = None # Path to save propagator
+        self.state_assignment_mod = False
+        self.coupling_reduction_factor = 0.8 
+        # If the above is true, state assignment will be attempted with reduced coupling strength
 
     def create_qubits(self,w,anh,J):
         '''
@@ -367,24 +370,45 @@ class processor:
         # Create the relevant Hamiltonians
         self.create_H_pr(self.w_frame)
         self.create_He(ctrl)
-        
+
         # Diagonalize the Processor Hamiltonian
-        Ec_scipy = sp.linalg.eig(np.array(self.H_c, dtype = complex))
-        
+        Evals, Evecs = sp.linalg.eig(self.H_c.full())
+
         # Map the states to do proper transform
         state_map_scipy = {}
-        for index,i in enumerate(Ec_scipy[1]):
-            ind_scipy = np.argmax(np.abs(Ec_scipy[1][:,index]))
+        for index,i in enumerate(Evecs):
+            ind_scipy = np.argmax(np.abs(Evecs[:,index]))
             state_map_scipy[ind_scipy] = index
-        
+
+        # The following is a patch to handle the case when state assignment fails    
+        if len(state_map_scipy)!=self.N_l**self.N:
+            if self.state_assignment_mod == False:
+                error_str = 'Length of state assignment = {} is not equal to N_l**N = {}'.format(len(state_map_scipy),self.N_l**self.N)
+                error_str += '\nState assignment failed. Try adjusting qubit frequencies or coupling'
+                raise ValueError('Length of state assignment = {} is not equal to N_l**N = {}'.format(len(state_map_scipy),self.N_l**self.N))        
+            else:
+                # print('State assignment failed. Attempting with reduced coupling strength')
+                self.J = self.J*self.coupling_reduction_factor
+                self.create_H_pr(self.w_frame)
+                Evals_reduced, Evecs_reduced = sp.linalg.eig(self.H_c.full())
+                state_map_scipy = {}
+                for index,i in enumerate(Evecs_reduced):
+                    ind_scipy = np.argmax(np.abs(Evecs_reduced[:,index]))
+                    state_map_scipy[ind_scipy] = index
+                if len(state_map_scipy)!=self.N_l**self.N:
+                    raise ValueError('State assignment failed even with reduced coupling strength')
+                # Restore the original coupling strength
+                self.J = self.J*2
+                self.create_H_pr(self.w_frame)
+            
         # Create the Unitary matrix to transform to dressed basis
         U_dressed_scipy = np.zeros((self.N_l**self.N,self.N_l**self.N),dtype = complex)
         
         for i in range(self.N_l**self.N):
-            U_dressed_scipy[:,i] = Ec_scipy[1][:,state_map_scipy[i]]
+            U_dressed_scipy[:,i] = Evecs[:,state_map_scipy[i]]
         
         # Convert to qutip Qobj for convenience
-        U_dressed_scipy = qt.Qobj(U_dressed_scipy,dims = [[self.N_l]*self.N,[self.N_l]*self.N], shape = (self.N_l**self.N,self.N_l**self.N))
+        U_dressed_scipy = qt.Qobj(U_dressed_scipy,dims = [[self.N_l]*self.N,[self.N_l]*self.N])
         U_dressed_scipy = U_dressed_scipy.dag()
         
         # Transform all Hamiltonians dressed basis
@@ -432,7 +456,7 @@ class processor:
         if return_Qobj:
             return H
         else:
-            return np.array(H, dtype = complex)
+            return H.full()
         return H
     
     def find_dressed(self):  
@@ -450,7 +474,7 @@ class processor:
         '''
         
         # Find eigen states of processor Hamiltonian
-        E_val, E_vec = lin.eigh(np.array(self.H_c, dtype = complex))
+        E_val, E_vec = lin.eigh(self.H_c.full())
         E_vec = [list(i) for i in E_vec.T]
         E_c = [E_val,E_vec]
         
@@ -635,7 +659,7 @@ class processor:
         
         
         # Convert to Quantum Object and Permute
-        M = qt.Qobj(M, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        M = qt.Qobj(M, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         if ctrl == tgt:
             # For single qubit gates
             M = M.permute([i for i in range(self.N) if i!=tgt]+[tgt])
@@ -645,7 +669,7 @@ class processor:
             
         # Save the propagator if need be
         if self.save_M:
-            l = [[ctrl,tgt,drive_frequency,t,args],np.array(M, dtype = complex)]
+            l = [[ctrl,tgt,drive_frequency,t,args], M.full()]
             with open(self.propagator_path + '_CR_gate_ctrl_{}_tgt_{}_{}_MHz_Drive_{}_ns_gate_time.pkl'.format(ctrl,tgt,np.round(args['Emax']/(2*np.pi),3),np.around(args['tp'],3)),'wb') as f:
                 pickle.dump(l,f)
         return M
@@ -673,7 +697,7 @@ class processor:
             for j in range(2**self.N):
                 M[i][j] = U[sum([int(k)*(self.N_l)**(self.N-ind-1) for ind,k in enumerate(list(np.binary_repr(i,self.N)))]),sum([int(l)*(self.N_l)**(self.N-ind-1) for ind,l in enumerate(list(np.binary_repr(j,self.N)))])]   
         # Create and Permute Qobj
-                M = qt.Qobj(M, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+                M = qt.Qobj(M, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         if ctrl == tgt:
             # For single qubit gates
             M = M.permute([i for i in range(self.N) if i!=tgt]+[tgt])
@@ -726,7 +750,7 @@ class processor:
         if type(M_in) == np.array([1]):
             M = M_in
         else:
-            M = np.array(M_in,dtype = complex)
+            M = M_in.full()
         if mag_angle_form:
             print(np.around(np.abs(M),rounding))
             print((np.around(np.abs(M),1)!=0)*np.around(np.angle(M,deg = True),rounding))
@@ -778,9 +802,9 @@ class processor:
 
                 # Then project into computational subspace
                 if self.N == 1:
-                    partial_trace_qubit_list[i][state] = [qt.Qobj([[j[0][0][0],j[1][0][0]]],dims = [[2],[1]], shape = (2,1)) for j in l]
+                    partial_trace_qubit_list[i][state] = [qt.Qobj([[j[0][0][0],j[1][0][0]]],dims = [[2],[1]]) for j in l]
                 else:
-                    partial_trace_qubit_list[i][state] = [qt.Qobj([[j[0,0],j[0,1]],[j[1,0],j[1,1]]],dims = [[2],[2]], shape = (2,2)) for j in l]
+                    partial_trace_qubit_list[i][state] = [qt.Qobj([[j[0,0],j[0,1]],[j[1,0],j[1,1]]],dims = [[2],[2]]) for j in l]
         return partial_trace_qubit_list
     
     def extract_expectation_values(self,state_list):
@@ -868,6 +892,7 @@ class processor:
             if angles:
                 ax = Axes3D(fig, azim=angles[0], elev= angles[1])
             else:
+                print("inside")
                 ax = Axes3D(fig, azim=-40, elev=30)
             sphere = qt.Bloch(fig = fig, axes=ax)
             
@@ -998,8 +1023,8 @@ class processor:
             
             d = U.shape[0]
             N = int(np.log2(d))
-            U_f = qt.Qobj(U, dims = [[2 for i in range(N)],[2 for i in range(N)]], shape = (2**N,2**N))
-            V_f = qt.Qobj(V, dims = [[2 for i in range(N)],[2 for i in range(N)]], shape = (2**N,2**N))
+            U_f = qt.Qobj(U, dims = [[2 for i in range(N)],[2 for i in range(N)]])
+            V_f = qt.Qobj(V, dims = [[2 for i in range(N)],[2 for i in range(N)]])
             F = (1/(d*(d+1)))*((U_f.dag()*U_f).tr() + np.abs((U_f.dag()*V_f).tr())**2)
             return np.real(F)
 
@@ -1150,7 +1175,7 @@ class processor:
 
         # Tensor multiply phases and control target matrix
         U_CR = np.kron(phase,ct)            
-        U_CR = qt.Qobj(U_CR, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_CR = qt.Qobj(U_CR, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         
         if print_U_matrix:
             self.print_U(U_CR)
@@ -1293,7 +1318,7 @@ class processor:
             U_CR_CP[ind_1+1][ind_1+1] = np.exp(1j*theta1[i])*np.cos(phi1/2)
             
         # Convert to Qobj and Return
-        U_CR_CP = qt.Qobj(U_CR_CP, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_CR_CP = qt.Qobj(U_CR_CP, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         
         return U_CR_CP
     
@@ -1320,7 +1345,7 @@ class processor:
                     but other qubits can only pick up a phase
         '''    
         
-        M = np.array(M, dtype = complex)        
+        M = M.full()        
         M_svd = np.zeros((2**self.N,2**self.N), dtype = complex)
         
         # Extract Closest Unitary for each element in the block diagonal
@@ -1330,7 +1355,7 @@ class processor:
             M_svd[ind:ind+2**n,ind:ind+2**n] = U_svd
                     
         # Convert to Qobj and Return
-        M_svd = qt.Qobj(M_svd, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        M_svd = qt.Qobj(M_svd, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         return M_svd
     
     def calibrate_cnot_phi(self,ctrl,tgt,drive_frequency,pulse_shape,args,E_key = 'Emax',t_key = 'tp',E_list = np.arange(3,90,3),t_list = np.arange(50,150,25), use_optimizer = True, use_zero_initial_values = False):
@@ -1856,7 +1881,7 @@ class processor:
                     Total Phase accumulated is the sum of the phases accumulate by the control and spectator qubits
         '''
         
-        M = np.array(M, dtype = complex)
+        M = M.full()
         phi0 = np.zeros(2**(self.N-2))
         phi1 = np.zeros(2**(self.N-2))
         theta0 = np.zeros(2**(self.N-2))
@@ -1976,7 +2001,7 @@ class processor:
         
         # Tensor multiply phases and control target matrix
         U_CR = np.kron(phase,ct)            
-        U_CR = qt.Qobj(U_CR, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_CR = qt.Qobj(U_CR, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         return U_CR
         
     '''########################## Single Qubit Gate Functions ##################################'''
@@ -2036,7 +2061,7 @@ class processor:
 
         # Tensor multiply phases and control target matrix
         U_RX = np.kron(phase,ct)            
-        U_RX = qt.Qobj(U_RX, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_RX = qt.Qobj(U_RX, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         
         if print_U_matrix:
             self.print_U(U_RX)
@@ -2179,7 +2204,7 @@ class processor:
             U_RX_CP[ind_1+1][ind_1+1] = np.exp(1j*theta1[i])*np.cos(phi1/2)
             
         # Convert to Qobj and Return
-        U_RX_CP = qt.Qobj(U_RX_CP, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_RX_CP = qt.Qobj(U_RX_CP, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
        
         return U_RX_CP
 
@@ -2240,7 +2265,7 @@ class processor:
         
         # Tensor multiply phases and control target matrix
         U_X = np.kron(phase,ct)            
-        U_X = qt.Qobj(U_X, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]], shape = (2**self.N,2**self.N))
+        U_X = qt.Qobj(U_X, dims = [[2 for i in range(self.N)],[2 for i in range(self.N)]])
         return U_X
     
     def get_F_X(self,tgt,drive_frequency, pulse_shape, t, args = None):
@@ -2269,8 +2294,8 @@ class processor:
                     Fidelity of the gate
         '''
         ctrl = tgt
-        M = np.array(self.get_M(ctrl,tgt,drive_frequency,pulse_shape,t,args), dtype = complex)
-        U_X = np.array(self.get_U_X_Rotation(M), dtype = complex)
+        M = self.get_M(ctrl,tgt,drive_frequency,pulse_shape,t,args).full()
+        U_X = self.get_U_X_Rotation(M).full()
         F = self.get_f_np(M,U_X)
         return F 
     
