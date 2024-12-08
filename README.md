@@ -13,5 +13,6 @@ Instructions to use:
 
 1. Clone this whole repository.
 2. Create a new conda environment (Not necessary, but recommended, some package versions might be changed)
-3. In the directory containing this repository, run ``` pip install -e cr_simulation ```
-4. Use the example notebook to understand use all features
+3. In the directory containing this repository, use the yml file to create a conda environment as follows:
+    `conda env create -f cr_simulation.yml`
+5. Use the example notebook to understand use all features
